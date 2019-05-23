@@ -1,32 +1,30 @@
-#include "Restricted.h"
+#include "TypeSet.h"
+#include "VariantValue.h"
 
 #include <iostream>
 
-using namespace Restricted;
-using namespace std;
+using namespace TypeSet;
+using namespace VariantValue;
 
-constexpr auto startMoney = Restrict<20>();
-
-auto BuyTicket(RestrictSpan<0, startMoney> price) {
-	cout << "Bought ticket for $" << price << endl;
-	return startMoney - price;
-}
+constexpr Value startMoney = I<20>();
 
 int main() {
-	cout << "Age?" << endl;
-	int age; cin >> age;
+	std::cout << "Age?" << std::endl;
+	int age; std::cin >> age;
 
-	constexpr auto adultPrice = Restrict<25>();
-	constexpr auto childPrice = Restrict<15>();
+	constexpr Value adultPrice = I<25>();
+	constexpr Value childPrice = I<15>();
 
-	auto price = join(age >= 18, adultPrice, childPrice);
+	Value price = select(age >= 18, adultPrice, childPrice);
 
-	auto moneyLeft = split(
+	int x = startMoney;
+
+	auto moneyLeft = visit(
 		price,
-		BuyTicket,
-		[](auto p) { cout << "Price too expensive: $" << p << endl; return startMoney;
-	});
+		[](ValueInterval<0, 20> p) { std::cout << "Bought ticket!" << std::endl; return Value(I<5>()); },
+		[](auto p) { std::cout << "Price too expensive: $" << std::endl; return startMoney; }
+	);
 
-	cout << "Money left: $" << moneyLeft << endl;
-	cout << typeid(moneyLeft).name() << endl;
+	std::cout << "Money left: $" << moneyLeft << std::endl;
+//	std::cout << typeid(x).name() << std::endl;
 }

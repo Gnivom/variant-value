@@ -20,18 +20,15 @@ namespace Restricted {
 		constexpr RestrictedInteger(std::integral_constant<int, I>) : _i(I) {
 			static_assert(((I == Is) || ...), "Invalid value");
 		}
-		template<int... Js, typename = std::enable_if_t< is_super_set(intList(), IL<Js...>()), void>>
-		constexpr RestrictedInteger(const RestrictedInteger<IL<Js...>>& other) : _i(int(other)) {
-			static_assert(is_super_set(intList(), IL<Js...>()), "Invalid restriction conversion");
-		}
+		template<int... Js, typename = std::enable_if_t< is_super_set(intList(), IL<Js...>())>>
+		constexpr RestrictedInteger(const RestrictedInteger<IL<Js...>>& other) : _i(int(other)) {}
 		template<class F, class intList1, class intList2>
 		constexpr RestrictedInteger(F, RestrictedInteger<intList1> x, RestrictedInteger<intList2> y) : _i(F::f(int(x), int(y))) {
 			using Candidates = Cleanup_t<Papply<F, Cartesian_t<intList1, intList2>>>;
 			static_assert(is_super_set(intList(), Candidates()), "In");
 		}
-		template<int... Js>
+		template<int... Js, typename = std::enable_if_t< is_super_set(intList(), IL<Js...>())>>
 		RestrictedInteger& operator=(const RestrictedInteger<IL<Js...>> & other) {
-			static_assert(is_super_set(intList(), IL<Js...>()), "Invalid restriction conversion");
 			_i = int{ other };
 			return *this;
 		}
@@ -77,7 +74,7 @@ namespace Restricted {
 	using RestrictSpan = RestrictedInteger<Span_t<Start, End>>;
 
 	template<class leftList, class rightList>
-	constexpr auto join(bool selectLeft, RestrictedInteger<leftList> left, RestrictedInteger<rightList> right) {
+	constexpr auto select(bool selectLeft, RestrictedInteger<leftList> left, RestrictedInteger<rightList> right) {
 		using ReturnType = std::common_type_t<RestrictedInteger<leftList>, RestrictedInteger<rightList>>;
 		return selectLeft ? ReturnType(left) : ReturnType(right);
 	}
