@@ -21,21 +21,31 @@ namespace TypeSet {
 	template<class T, class S>
 	inline constexpr bool Contains_v = Contains<T, S>::value;
 
+	// Concatenate sets (when you know they don't overlap)
+	template<class S1, class S2>
+	struct Concat;
+	template<class... T1s, class... T2s>
+	struct Concat<Set<T1s...>, Set<T2s...>> { using type = Set<T1s..., T2s...>; };
+	template<class S1, class S2>
+	using Concat_t = typename Concat<S1, S2>::type;
+
 	// Union of sets
-	template<class S1, class S2>
+	template<class S1, class S2, bool fail = false>
 	struct Union;
+	template<class S1, class S2, bool fail = false>
+	using Union_t = typename Union<S1, S2, fail>::type;
 	template<class S1, class S2>
-	using Union_t = typename Union<S1, S2>::type;
+	struct Union<S1, S2, true> { using type = void; };
 	template<class... T1s, class T2, class... T2s>
-	struct Union<Set<T1s...>, Set<T2, T2s...>> {
-		using type = std::conditional_t<
-			Contains_v<T2, Set<T1s...>>,
-			Union_t<Set<T1s...>, Set<T2s...>>,
-			Union_t<Set<T1s..., T2>, Set<T2s...>>
+	struct Union<Set<T1s...>, Set<T2, T2s...>, false> {
+		constexpr static bool contains = Contains_v<T2, Set<T1s...>>;
+		using type = std::conditional_t< contains,
+			Union_t<Set<T1s...>, Set<T2s...>, !contains>,
+			Union_t<Set<T1s..., T2>, Set<T2s...>, contains>
 		>;
 	};
 	template<class... Ts>
-	struct Union<Set<Ts...>, Set<>> {
+	struct Union<Set<Ts...>, Set<>, false> {
 		using type = Set<Ts...>;
 	};
 	static_assert(std::is_same_v<
@@ -54,14 +64,14 @@ namespace TypeSet {
 	using Cartesian_t = typename Cartesian<Set1, Set2>::type;
 	template<class T1, class... T1s, class... T2s>
 	struct Cartesian<Set<T1, T1s...>, Set<T2s...>> {
-		using type = Union_t<
+		using type = Concat_t<
 			Cartesian_t<Set<T1>, Set<T2s...>>,
 			Cartesian_t<Set<T1s...>, Set<T2s...>>
 		>;
 	};
 	template<class T1, class T2, class... T2s>
 	struct Cartesian<Set<T1>, Set<T2, T2s...>> {
-		using type = Union_t<
+		using type = Concat_t<
 			Cartesian_t<Set<T1>, Set<T2>>,
 			Cartesian_t<Set<T1>, Set<T2s...>>
 		>;

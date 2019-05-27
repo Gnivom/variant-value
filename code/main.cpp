@@ -21,11 +21,9 @@ int main() {
 
 	auto moneyLeft = visit(
 		price,
-		[](ValueInterval<0, 20> p) { std::cout << "Bought ticket!" << std::endl; return Value(I<5>()); },
+		[](ValueInterval<0, startMoney> p) { std::cout << "Bought ticket!" << std::endl; return startMoney - p; },
 		[](auto p) { std::cout << "Price too expensive: $" << std::endl; return startMoney; }
 	);
-
-	Value y = adultPrice + moneyLeft;
 
 	std::cout << "Money left: $" << moneyLeft << std::endl;
 //	std::cout << typeid(x).name() << std::endl;

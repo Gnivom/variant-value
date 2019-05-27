@@ -147,7 +147,7 @@ namespace VariantValue {
 		};
 		struct Subtracter {
 			template<int I1, int I2>
-			constexpr auto operator()(Pair<I<I1>, I<I2>>) const -> I<I1 - I2> { return Value(I<I1 - I2>()); }
+			constexpr auto operator()(Pair<I<I1>, I<I2>>) const -> I<I1 - I2> { return I<I1 - I2>(); }
 		};
 		struct Multiplier {
 			template<int I1, int I2>
