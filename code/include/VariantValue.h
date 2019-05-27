@@ -2,6 +2,7 @@
 #include "TypeSet.h"
 
 #include <array>
+#include <functional>
 
 namespace VariantValue {
 	using namespace TypeSet;
@@ -115,8 +116,13 @@ namespace VariantValue {
 	template<class... Ts, class... Funcs>
 	constexpr auto visit(Value<Set<Ts...>> x, Funcs... fs) {
 		using ReturnType = std::common_type_t<std::invoke_result_t< detail::SelectFunc_F<Ts, Funcs...>, Ts>...>;
-		constexpr std::array<ReturnType, sizeof...(Ts)> a = { (ReturnType((*detail::SelectFunc<Ts, Funcs...>(fs...)._pf)(Ts{})))... };
-		return a[x.GetIndex()];
+		typedef ReturnType(*DerivedFunc)(Funcs...);
+		constexpr std::array<DerivedFunc, sizeof...(Ts)> a = {
+			( [](Funcs... _fs) -> ReturnType {
+				return (*detail::SelectFunc<Ts, Funcs...>(_fs...)._pf)(Ts{});
+			})...
+		};
+		return a[x.GetIndex()](fs...);
 	}
 
 	namespace detail {
