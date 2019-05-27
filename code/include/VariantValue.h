@@ -1,8 +1,7 @@
 #pragma once
 #include "TypeSet.h"
 
-#include <variant>
-#include <optional>
+#include <array>
 
 namespace VariantValue {
 	using namespace TypeSet;
@@ -21,29 +20,31 @@ namespace VariantValue {
 	template<class S>
 	class Value;
 	template<class... Cs>
-	class Value<Set<Cs...>> : public std::variant<Cs...> {
-		using Base = std::variant<Cs...>;
+	class Value<Set<Cs...>> {
+		int _index; // Which type is currently held? Zero-indexed based on Cs...
 	public:
 		template<class T, class = std::enable_if_t<std::is_same_v<Set<T>, Set<Cs...>>>>
-		constexpr Value(T) : Base(T{}) {}
+		constexpr Value(T = T{}) : _index(0) {}
 		template<class T, T value>
-		constexpr Value(Constant<T, value>) : Base(Constant<T, value>{}) {
+		constexpr Value(Constant<T, value>) : _index(FindType<Constant<T, value>, Set<Cs...>>::index) {
 			static_assert(Contains_v<Constant<T, value>, Set<Cs...>>, "Constructing Value with invalid Constant");
 		}
+		template<class T, class = std::enable_if_t<is_super_set(Set<Cs...>(), Set<T>())>>
+		constexpr Value(Value<Set<T>> v) : _index(FindType<T, Set<Cs...>>::index) {}
 		template<class... Ts, class = std::enable_if_t<is_super_set(Set<Cs...>(), Set<Ts...>())>>
-		Value(Value<Set<Ts...>> v)
-			: Base(std::visit([](auto x) constexpr{ return Base(x); }, v))
-		{
-			static_assert(is_super_set(Set<Cs...>(), Set<Ts...>()));
+		constexpr Value(Value<Set<Ts...>> v) : _index(-1) {
+			constexpr std::array<int, sizeof...(Ts)> a = { (FindType<Ts, Set<Cs...>>::index)... };
+			_index = a[v.GetIndex()];
 		}
 		constexpr Value(const Value& v) = default;
 		constexpr Value(Value&& v) = default;
 		constexpr Value& operator=(const Value& v) = default;
 		constexpr Value& operator=(Value&& v) = default;
 
+		constexpr int GetIndex() const { return _index; }
 		template< class T, class = std::enable_if_t< ((std::is_same_v<T, typename Cs::type>) && ...) > >
-		operator T() const {
-			return std::visit(ConstantToValue<T>(), *this);
+		constexpr operator T() const {
+			return visit(*this, ConstantToValue<T>());
 		}
 	};
 	// Deduction guides
@@ -53,16 +54,28 @@ namespace VariantValue {
 
 namespace std {
 	// std::common_type<> is explicitly allowed to be specialized for user-defined types
-	template<class...T1s, class... T2s>
+	template<class... C1s, class... C2s>
 	struct common_type<
-		VariantValue::Value<TypeSet::Set<T1s...>>,
-		VariantValue::Value<TypeSet::Set<T2s...>>
+		VariantValue::Value<TypeSet::Set<C1s...>>,
+		VariantValue::Value<TypeSet::Set<C2s...>>
 	>
 	{
-		using type = typename VariantValue::Value<
-			TypeSet::Union_t<TypeSet::Set<T1s...>, TypeSet::Set<T2s...>>
+		using type = VariantValue::Value<
+			TypeSet::Union_t<TypeSet::Set<C1s...>, TypeSet::Set<C2s...>>
 		>;
 	};
+	// Promote Constant to Value
+	template<class T, T val, class C>
+	struct common_type<VariantValue::Constant<T, val>, C> :
+		common_type<VariantValue::Value<TypeSet::Set< VariantValue::Constant<T, val> >>, C> {};
+	template<class... C1s, class T, T val>
+	struct common_type<
+		VariantValue::Value<TypeSet::Set<C1s...>>,
+		VariantValue::Constant<T, val>
+	> : common_type<
+		VariantValue::Value<TypeSet::Set<C1s...>>,
+		VariantValue::Value<TypeSet::Set<VariantValue::Constant<T, val>>>
+	> {};
 }
 
 namespace VariantValue {
@@ -90,7 +103,9 @@ namespace VariantValue {
 			constexpr static bool use_func = std::is_invocable_v< Func, Value< Set<T> > >;
 			using F = std::conditional_t< use_func, Func, typename SelectFunc<T, Funcs...>::F >;
 			const F* _pf;
-			SelectFunc(const Func& f1, const Funcs& ... fs) {
+			constexpr SelectFunc(const Func& f1, const Funcs& ... fs)
+				: _pf(nullptr)
+			{
 				if constexpr (use_func) { _pf = &f1; }
 				else { _pf = SelectFunc<T, Funcs...>(fs...)._pf; }
 			}
@@ -98,52 +113,43 @@ namespace VariantValue {
 		template<class T, class... Funcs> using SelectFunc_F = typename SelectFunc<T, Funcs...>::F;
 	}
 	template<class... Ts, class... Funcs>
-	auto visit(Value<Set<Ts...>> x, Funcs... fs) {
-		using ReturnType = std::common_type_t<std::invoke_result_t< detail::SelectFunc_F<Ts, Funcs...>, Value<Set<Ts>>>...>;
-		std::optional<ReturnType> ret = std::nullopt;
-		std::initializer_list<int>({ (
-			std::holds_alternative<Ts>(x) ? (ret = (*detail::SelectFunc<Ts, Funcs...>(fs...)._pf)(Value<Set<Ts>>(std::get<Ts>(x)))), 0 : 0
-		) ... });
-		return *ret;
+	constexpr auto visit(Value<Set<Ts...>> x, Funcs... fs) {
+		using ReturnType = std::common_type_t<std::invoke_result_t< detail::SelectFunc_F<Ts, Funcs...>, Ts>...>;
+		constexpr std::array<ReturnType, sizeof...(Ts)> a = { (ReturnType((*detail::SelectFunc<Ts, Funcs...>(fs...)._pf)(Ts{})))... };
+		return a[x.GetIndex()];
 	}
 
 	namespace detail {
-		template<class RetType, class T1, class... T2s>
-		constexpr inline auto make_pair_inner(Value<Set<T2s...>> x2) {
-			std::optional<RetType> ret;
-			std::initializer_list<int>({ (
-				std::holds_alternative<T2s>(x2) ? (ret = std::optional(Value<Set<Pair<T1, T2s>>>(Pair<T1, T2s>()))), 0 : 0
-			) ... });
-			return *ret;
+		template<class ReturnType, class T1, class... T2s>
+		constexpr inline auto make_pair_inner() {
+			return std::array < ReturnType, sizeof...(T2s) >
+				{ ( ReturnType( Value<Set<Pair<T1, T2s>>>(Pair<T1, T2s>()) ) )... };
 		}
 	}
 	template<class... T1s, class... T2s>
 	constexpr auto make_pair(Value<Set<T1s...>> x1, Value<Set<T2s...>> x2) {
 		using ReturnType = Value<Cartesian_t<Set<T1s...>, Set<T2s...>>>;
-		std::optional<ReturnType> ret = std::nullopt;
-		std::initializer_list<int>({ (
-			std::holds_alternative<T1s>(x1) ?
-				(ret = std::optional(detail::make_pair_inner<ReturnType, T1s, T2s...>(x2))), 0 : 0
-		) ... });
-		return *ret;
+		constexpr std::array< std::array<ReturnType, sizeof...(T2s)>, sizeof...(T1s) > a =
+			{ ( detail::make_pair_inner<ReturnType, T1s, T2s...>() )... };
+		return a[x1.GetIndex()][x2.GetIndex()];
 	}
 
 	namespace detail {
 		struct Adder {
 			template<int I1, int I2>
-			constexpr auto operator()(Value<Set<Pair<I<I1>, I<I2>>>>) const -> Value<Set<I<I1+I2>>> { return Value(I<I1 + I2>()); }
+			constexpr auto operator()(Pair<I<I1>, I<I2>>) const -> I<I1+I2> { return I<I1 + I2>(); }
 		};
 		struct Subtracter {
 			template<int I1, int I2>
-			constexpr auto operator()(Value<Set<Pair<I<I1>, I<I2>>>>) const -> Value<Set<I<I1 - I2>>> { return Value(I<I1 - I2>()); }
+			constexpr auto operator()(Pair<I<I1>, I<I2>>) const -> I<I1 - I2> { return Value(I<I1 - I2>()); }
 		};
 		struct Multiplier {
 			template<int I1, int I2>
-			constexpr auto operator()(Value<Set<Pair<I<I1>, I<I2>>>>) const -> Value<Set<I<I1 * I2>>> { return Value(I<I1 * I2>()); }
+			constexpr auto operator()(Pair<I<I1>, I<I2>>) const -> I<I1 * I2> { return I<I1 * I2>(); }
 		};
 		struct Divider {
 			template<int I1, int I2>
-			constexpr auto operator()(Value<Set<Pair<I<I1>, I<I2>>>>) const -> Value<Set<I<I1 / I2>>> { return Value(I<I1 / I2>()); }
+			constexpr auto operator()(Pair<I<I1>, I<I2>>) const -> I<I1 / I2> { return I<I1 / I2>(); }
 		};
 	}
 	template<class V1, class V2>

@@ -120,4 +120,18 @@ namespace TypeSet {
 		Intersection_t<Set<bool, int, char>, Set<char, bool, void>>,
 		Set<bool, char>
 	>, "Set Intersection broken");
+
+
+	template<class T, class S>
+	struct FindType;
+	template<class T, class S, class... Ss>
+	struct FindType<T, Set<S, Ss...>> {
+		constexpr static int index = std::is_same_v<T, S> ?
+			0 : 1+FindType<T, Set<Ss...>>::index;
+	};
+	template<class T>
+	struct FindType<T, Set<>> {
+		constexpr static int index = -1;
+	};
+	static_assert(FindType<char, Set<int, void, char, bool>>::index == 2, "FindType broken");
 }
