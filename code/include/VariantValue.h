@@ -11,11 +11,15 @@ namespace VariantValue {
 	struct Constant { using type = T; constexpr static T value = val; };
 	template<int i>
 	using I = Constant<int, i>;
+	using False = Constant<bool, false>;
+	using True = Constant<bool, true>;
 	template<class T>
 	struct ConstantToValue {
 		template<T val>
 		constexpr T operator()(Constant<T, val>) const { return val; }
 	};
+
+	struct ValueIndex { int _index; ValueIndex(int i) : _index(i) {} };
 
 	// Variant Value
 	template<class S>
@@ -24,15 +28,14 @@ namespace VariantValue {
 	class Value<Set<Cs...>> {
 		int _index; // Which type is currently held? Zero-indexed based on Cs...
 	public:
-		template<class T, class = std::enable_if_t<std::is_same_v<Set<T>, Set<Cs...>>>>
-		constexpr Value(T = T{}) : _index(0) {}
+		constexpr Value(ValueIndex i) : _index(i._index) {}
 		template<class T, T value>
 		constexpr Value(Constant<T, value>) : _index(FindType<Constant<T, value>, Set<Cs...>>::index) {
 			static_assert(Contains_v<Constant<T, value>, Set<Cs...>>, "Constructing Value with invalid Constant");
 		}
 		template<class T, class = std::enable_if_t<is_super_set(Set<Cs...>(), Set<T>())>>
-		constexpr Value(Value<Set<T>> v) : _index(FindType<T, Set<Cs...>>::index) {}
-		template<class... Ts, class = std::enable_if_t<is_super_set(Set<Cs...>(), Set<Ts...>())>>
+		constexpr Value(T) : _index(FindType<T, Set<Cs...>>::index) {}
+		template<class... Ts, class = std::enable_if_t<is_super_set(Set<Cs...>(), Set<Ts...>()) >>
 		constexpr Value(Value<Set<Ts...>> v) : _index(-1) {
 			constexpr std::array<int, sizeof...(Ts)> a = { (FindType<Ts, Set<Cs...>>::index)... };
 			_index = a[v.GetIndex()];
@@ -93,6 +96,8 @@ namespace VariantValue {
 	namespace detail {
 		template<class T, class... Funcs>
 		struct SelectFunc;
+		template<class T, class... Funcs>
+		using SelectFunc_F = typename SelectFunc<T, Funcs...>::F;
 		template<class T, class Func>
 		struct SelectFunc<T, Func> {
 			using F = Func;
@@ -102,7 +107,7 @@ namespace VariantValue {
 		template<class T, class Func, class... Funcs>
 		struct SelectFunc<T, Func, Funcs...> {
 			constexpr static bool use_func = std::is_invocable_v< Func, Value< Set<T> > >;
-			using F = std::conditional_t< use_func, Func, typename SelectFunc<T, Funcs...>::F >;
+			using F = std::conditional_t< use_func, Func, SelectFunc_F<T, Funcs...> >;
 			const F* _pf;
 			constexpr SelectFunc(const Func& f1, const Funcs& ... fs)
 				: _pf(nullptr)
@@ -111,7 +116,6 @@ namespace VariantValue {
 				else { _pf = SelectFunc<T, Funcs...>(fs...)._pf; }
 			}
 		};
-		template<class T, class... Funcs> using SelectFunc_F = typename SelectFunc<T, Funcs...>::F;
 	}
 	template<class... Ts, class... Funcs>
 	constexpr auto visit(Value<Set<Ts...>> x, Funcs... fs) {
@@ -125,19 +129,10 @@ namespace VariantValue {
 		return a[x.GetIndex()](fs...);
 	}
 
-	namespace detail {
-		template<class ReturnType, class T1, class... T2s>
-		constexpr inline auto make_pair_inner() {
-			return std::array < ReturnType, sizeof...(T2s) >
-				{ ( ReturnType( Value<Set<Pair<T1, T2s>>>(Pair<T1, T2s>()) ) )... };
-		}
-	}
 	template<class... T1s, class... T2s>
 	constexpr auto make_pair(Value<Set<T1s...>> x1, Value<Set<T2s...>> x2) {
 		using ReturnType = Value<Cartesian_t<Set<T1s...>, Set<T2s...>>>;
-		constexpr std::array< std::array<ReturnType, sizeof...(T2s)>, sizeof...(T1s) > a =
-			{ ( detail::make_pair_inner<ReturnType, T1s, T2s...>() )... };
-		return a[x1.GetIndex()][x2.GetIndex()];
+		return ReturnType(ValueIndex(x1.GetIndex() * sizeof...(T2s) + x2.GetIndex()));
 	}
 
 	namespace detail {
@@ -179,5 +174,5 @@ namespace VariantValue {
 		using IntegerInterval_t = typename IntegerInterval<Start, End>::type;
 	}
 	template<int Start, int End>
-	using ValueInterval = Value<detail::IntegerInterval_t<Start, End+1>>;
+	using IntInterval = Value<detail::IntegerInterval_t<Start, End+1>>;
 }

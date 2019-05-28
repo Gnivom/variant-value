@@ -12,19 +12,17 @@ int main() {
 	std::cout << "Age?" << std::endl;
 	int age; std::cin >> age;
 
-	constexpr Value adultPrice = I<25>();
-	constexpr Value childPrice = I<15>();
+	constexpr Value normalPrice = I<25>();
+	constexpr Value seniorPrice = I<12>();
 
-	Value price = select(age >= 18, adultPrice, childPrice);
-
-	int x = startMoney;
+	Value price = select(age >= 18, select(age >= 65, seniorPrice, normalPrice), Value(False()));
 
 	auto moneyLeft = visit(
 		price,
-		[](ValueInterval<0, startMoney> p) { std::cout << "Bought ticket!" << std::endl; return startMoney - p; },
-		[](auto p) { std::cout << "Price too expensive: $" << std::endl; return startMoney; }
+		[](IntInterval<0, startMoney> p) { std::cout << "Bought ticket!" << std::endl; return startMoney - p; },
+		[](Value<Set<False>>) { std::cout << "Too young" << std::endl; return startMoney; },
+		[](auto) { std::cout << "Price too expensive" << std::endl; return startMoney; }
 	);
 
 	std::cout << "Money left: $" << moneyLeft << std::endl;
-//	std::cout << typeid(x).name() << std::endl;
 }

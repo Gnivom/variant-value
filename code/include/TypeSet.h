@@ -49,8 +49,8 @@ namespace TypeSet {
 		using type = Set<Ts...>;
 	};
 	static_assert(std::is_same_v<
-		Union_t<Set<int>, Set<char>>,
-		Set<int, char>
+		Union_t<Set<int, void>, Set<char, int, bool>>,
+		Set<int, void, char, bool>
 	> , "Set Union is broken");
 
 	// Pair of types
